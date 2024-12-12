@@ -5,31 +5,25 @@ Created on Sun Dec  8 22:13:41 2024
 
 @author: tonyshara
 """
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import Dataset
-from torch.utils.data import DataLoader
+
 
 import pandas as pd
 import numpy as np
-from scipy.signal import butter, filtfilt
-from sklearn.metrics import mean_squared_error
-import matplotlib.pyplot as plt
+# from scipy.signal import butter, filtfilt
+# from sklearn.metrics import mean_squared_error
+# import matplotlib.pyplot as plt
 
-from tqdm import tqdm
-from time import sleep
+# from tqdm import tqdm
+# from time import sleep
 from os import listdir
-import matplotlib.image as mpimg
-from matplotlib.animation import FuncAnimation as FA
+# import matplotlib.image as mpimg
+# from matplotlib.animation import FuncAnimation as FA
 
 pd.set_option('display.max_columns', 50)
 pd.set_option('display.max_rows', 50)
 
 
-from gru_helpers import *
-from lstm_helpers import get_dataLoader, data_test, get_model_training_helpers
-from lstm_helpers import validation, test_function, train_model, err_analysis
+# from gru_helpers import *
 from plot_helpers import comparison_plot_summary
 from preprocessing_helpers import minMax, get_smoothed_data, get_LPF_filtered_data
 
@@ -92,7 +86,6 @@ def get_rul_test_train(_df_test, _rul_test, _df_train):
 
 SAMPLE = 4
 if __name__ == '__main__':
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
     # LOAD DATA
     folder_path = './CMAPS/'
@@ -154,78 +147,86 @@ if __name__ == '__main__':
     df_train_smoothed, df_test_smoothed = get_smoothed_data(df_train, df_test)
 
     # 4) Low Pass Filter
-    df_train_LPF, df_test_LPF = get_LPF_filtered_data(df_train, df_test, cutoff_low=15, fs=1000, order=5)
+    df_train_LPF, df_test_LPF = get_LPF_filtered_data(df_train, df_test, cutoff_low=12, fs=1000, order=5)
 
-
-    ######################
-    # LSTM
-    ######################
-    # 1) Preprocessing
+    # 5) Preprocessing
     sample = 10
     sample_df               = df_train[df_train['Engine Unit'] == sample].copy()
     smoothed_sample_df      = df_train_smoothed[df_train_smoothed['Engine Unit'] == sample].copy()
     LPF_sample_df           = df_train_LPF[df_train_LPF['Engine Unit'] == sample].copy()
 
-    # 2) Sample Data
+    # Sample Data
     samples = [sample_df,smoothed_sample_df,LPF_sample_df]
     labels = ['original','smoothed','LPF']
     comparison_plot_summary(samples, labels)
+    
+    ######################
+    # LSTM
+    ######################
+    RUN_LSTM = False
+    if RUN_LSTM:
+        import torch
+        from torch.utils.data import DataLoader
+        from learning_utils import get_dataLoader, data_test, train_model, err_analysis
+        from lstm_helpers import  get_model_training_helpers
+        device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-    # 3) Model Parameters
-    n_features = len(df_train.columns[2:-1])
-    window = 20
-    print(f'number of features: {n_features}, window size: {window}')
-    np.random.seed(5)
-    units = np.arange(1,101)
-    train_units = list(np.random.choice(units, 80, replace = False))
-    val_units = list(set(units) - set(train_units))
-    print(val_units)
-
-
-    # 5) Original Model
-    train_data = df_train[df_train['Engine Unit'].isin(train_units)].copy()
-    val_data = df_train[df_train['Engine Unit'].isin(val_units)].copy()
-    trainloader,valloader = get_dataLoader(train_data, val_data, df_train, window)
-    test = data_test(units, df_test)
-    testloader = DataLoader(test, batch_size = 100)
-    model, loss_fn, optimizer = get_model_training_helpers(n_features, device)
-    train_model(model, trainloader, valloader, device, optimizer, loss_fn, epochs=100)
-
-    # Save the model to the specified file
-    torch.save(model.state_dict(), 'model.pth')
-    # Load Models
-    model.load_state_dict(torch.load('model.pth'))
-
-    err_analysis(model, loss_fn, testloader, device, _name='original')
-
-    # 6) Smoothed Model
-    train_data_sm = df_train_smoothed[df_train_smoothed['Engine Unit'].isin(train_units)].copy()
-    val_data_sm = df_train_smoothed[df_train_smoothed['Engine Unit'].isin(val_units)].copy()
-    trainloader_sm,valloader_sm = get_dataLoader(train_data_sm, val_data_sm, df_train_smoothed, window)
-    test_sm = data_test(units, df_test)
-    testloader_sm = DataLoader(test_sm, batch_size = 100)
-    model_sm, loss_fn_sm, optimizer_sm = get_model_training_helpers(n_features, device)
-    train_model(model_sm, trainloader_sm, valloader_sm, device, optimizer_sm, loss_fn_sm, epochs=100)
-
-    # Save the model to the specified file
-    torch.save(model_sm.state_dict(), 'model_smoothed.pth')
-    # Load Models
-    model_sm.load_state_dict(torch.load('model_smoothed.pth'))
-
-    err_analysis(model_sm, loss_fn_sm, testloader_sm, device, _name='smoothed')
-
-    # 7) LPF Model
-    train_data_LPF = df_train_LPF[df_train_LPF['Engine Unit'].isin(train_units)].copy()
-    val_data_LPF = df_train_LPF[df_train_LPF['Engine Unit'].isin(val_units)].copy()
-    trainloader_LPF,valloader_LPF = get_dataLoader(train_data_LPF, val_data_LPF, df_train_LPF, window)
-    test_LPF = data_test(units, df_test)
-    testloader_LPF = DataLoader(test_LPF, batch_size = 100)
-    model_LPF, loss_fn_LPF, optimizer_LPF = get_model_training_helpers(n_features, device)
-    train_model(model_LPF, trainloader_LPF, valloader_LPF, device, optimizer_LPF, loss_fn_LPF, epochs=100)
-
-    # Save the model to the specified file
-    torch.save(model_LPF.state_dict(), 'model_LPF.pth')
-    # Load Models
-    model_LPF.load_state_dict(torch.load('model_LPF.pth'))
-
-    err_analysis(model_LPF, loss_fn_LPF, testloader_LPF, device, _name='LPF')
+    
+        # 2) Model Parameters
+        n_features = len(df_train.columns[2:-1])
+        window = 20
+        print(f'number of features: {n_features}, window size: {window}')
+        np.random.seed(5)
+        units = np.arange(1,101)
+        train_units = list(np.random.choice(units, 80, replace = False))
+        val_units = list(set(units) - set(train_units))
+        print(val_units)
+    
+    
+        # 3) Original Model
+        train_data = df_train[df_train['Engine Unit'].isin(train_units)].copy()
+        val_data = df_train[df_train['Engine Unit'].isin(val_units)].copy()
+        trainloader,valloader = get_dataLoader(train_data, val_data, df_train, window)
+        test = data_test(units, df_test)
+        testloader = DataLoader(test, batch_size = 100)
+        model, loss_fn, optimizer = get_model_training_helpers(n_features, device)
+        train_model(model, trainloader, valloader, device, optimizer, loss_fn, epochs=100)
+    
+        # Save the model to the specified file
+        torch.save(model.state_dict(), 'model.pth')
+        # Load Models
+        model.load_state_dict(torch.load('model.pth'))
+    
+        err_analysis(model, loss_fn, testloader, device, _name='original')
+    
+        # 4) Smoothed Model
+        train_data_sm = df_train_smoothed[df_train_smoothed['Engine Unit'].isin(train_units)].copy()
+        val_data_sm = df_train_smoothed[df_train_smoothed['Engine Unit'].isin(val_units)].copy()
+        trainloader_sm,valloader_sm = get_dataLoader(train_data_sm, val_data_sm, df_train_smoothed, window)
+        test_sm = data_test(units, df_test)
+        testloader_sm = DataLoader(test_sm, batch_size = 100)
+        model_sm, loss_fn_sm, optimizer_sm = get_model_training_helpers(n_features, device)
+        train_model(model_sm, trainloader_sm, valloader_sm, device, optimizer_sm, loss_fn_sm, epochs=100)
+    
+        # Save the model to the specified file
+        torch.save(model_sm.state_dict(), 'model_smoothed.pth')
+        # Load Models
+        model_sm.load_state_dict(torch.load('model_smoothed.pth'))
+    
+        err_analysis(model_sm, loss_fn_sm, testloader_sm, device, _name='smoothed')
+    
+        # 5) LPF Model
+        train_data_LPF = df_train_LPF[df_train_LPF['Engine Unit'].isin(train_units)].copy()
+        val_data_LPF = df_train_LPF[df_train_LPF['Engine Unit'].isin(val_units)].copy()
+        trainloader_LPF,valloader_LPF = get_dataLoader(train_data_LPF, val_data_LPF, df_train_LPF, window)
+        test_LPF = data_test(units, df_test)
+        testloader_LPF = DataLoader(test_LPF, batch_size = 100)
+        model_LPF, loss_fn_LPF, optimizer_LPF = get_model_training_helpers(n_features, device)
+        train_model(model_LPF, trainloader_LPF, valloader_LPF, device, optimizer_LPF, loss_fn_LPF, epochs=100)
+    
+        # Save the model to the specified file
+        torch.save(model_LPF.state_dict(), 'model_LPF.pth')
+        # Load Models
+        model_LPF.load_state_dict(torch.load('model_LPF.pth'))
+    
+        err_analysis(model_LPF, loss_fn_LPF, testloader_LPF, device, _name='LPF')
